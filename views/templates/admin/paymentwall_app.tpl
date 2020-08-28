@@ -1,18 +1,11 @@
-<div id="app"></div>
+<div id="waiap-app"></div>
 <script src={$waiap_pwall_bundle}></script>
 <link href={$waiap_pwall_css} rel=stylesheet>
-<script
-      type="text/javascript"
-      data-placeholder="#app"
-      data-backoffice="true"
-      data-endpoint={$waiap_pwall_controller}
-      data-amount="0"
-      data-currency={$currency->iso_code}
-      src={$waiap_pwall_app}>
-</script>
+<script src="https://cdn.jsdelivr.net/gh/waiap/javascript-sdk@2.0.0/dist/2.0.0/pwall-sdk.min.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function(){
-       //document.dispatchEvent(new Event('payment_wall_load_app'));
-       window.PaymentWall.start();
-    });
+    const client = new PWall('{$waiap_enviroment}', false);
+    var backoffice = client.backoffice();
+    backoffice.backendUrl('{$waiap_pwall_controller}');
+    backoffice.appendTo("#waiap-app");
+    backoffice.init();
 </script>

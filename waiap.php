@@ -9,12 +9,13 @@ class Waiap extends PaymentModule{
     CONST CSS_PWALL                 = "/pwall_app/css/app.css";
     CONST JS_APP                    = "/pwall_app/js/app.js";
     CONST ROUTES_LOAD_WAIAP_BUNDLE  = ["order","order-opc","supercheckoutcustom"];
+    CONST SIPAY_JS_SDK              = "https://cdn.jsdelivr.net/gh/waiap/javascript-sdk@2.0.0/dist/2.0.0/pwall-sdk.min.js";
 
     public function __construct()
     {
         $this->name                     = 'waiap';
         $this->tab                      = 'payments_gateways';
-        $this->version                  = '2.0.1';
+        $this->version                  = '4.1.3';
         $this->author                   = 'Bankia';
         $this->need_instance            = 0;
         $this->ps_versions_compliancy   = array('min' => '1.6', 'max' => _PS_VERSION_);
@@ -41,15 +42,62 @@ class Waiap extends PaymentModule{
             || !$this->registerHook('payment') 
             || !$this->registerHook('paymentReturn') 
             || !$this->registerHook('displayHeader')
-            || !$this->registerHook('paymentOptions'))
-            return false;
+            || !$this->registerHook('paymentOptions')
+            || !$this->registerHook('displayAdminOrderContentOrder')
+            || !$this->registerHook('displayBackOfficeHeader')){
+                return false;
+        }
+
+        $this->createOrderExtraDataTable();
+        $this->addOrderState($this->l('Pending payment'));
+
+        Configuration::deleteByName('waiap_key');
+        Configuration::deleteByName('waiap_resource');
+        Configuration::deleteByName('waiap_environment');
+        Configuration::deleteByName('waiap_secret');
+        Configuration::deleteByName('waiap_displayed_name');
         return true;
+    }
+
+    public function createOrderExtraDataTable(){
+        Db::getInstance()->execute('
+            CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_. 'waiap_order_extradata` (
+                `id_order` INT UNSIGNED NOT NULL,
+                `data` LONGTEXT NULL,
+                PRIMARY KEY (`id_order`)
+            ) ENGINE='._MYSQL_ENGINE_. ' CHARACTER SET utf8 COLLATE utf8_general_ci;'
+        ); 
     }
 
     public function uninstall()
     {
-        if (!parent::uninstall())
+        if (!parent::uninstall()) {
             return false;
+        }
+        return true;
+    }
+
+    public function addOrderState($name)
+    {
+        if(!Configuration::get('WAIAP_PENDING_PAYMENT')){
+            // create new order state
+            $order_state = new OrderState();
+            $order_state->send_email = false;
+            $order_state->color = '#cdcdcd';
+            $order_state->hidden = false;
+            $order_state->delivery = false;
+            $order_state->logable = false;
+            $order_state->invoice = false;
+            $languages = Language::getLanguages(false);
+            foreach ($languages as $language)
+                $order_state->name[$language['id_lang']] = $name;
+
+            // Update object
+            $order_state->add();
+            Configuration::updateValue('WAIAP_PENDING_PAYMENT', (int) $order_state->id);
+        }   
+
+
         return true;
     }
 
@@ -64,6 +112,7 @@ class Waiap extends PaymentModule{
             $environment        = strval(Tools::getValue('waiap_environment'));
             $secret             = strval(Tools::getValue('waiap_secret'));
             $displayed_name     = strval(Tools::getValue('waiap_displayed_name'));
+            $review_page_title  = strval(Tools::getValue('waiap_review_page_title'));
 
             if (
                 $this->invalidEntry($key)
@@ -80,6 +129,7 @@ class Waiap extends PaymentModule{
                 Configuration::updateValue('waiap_environment', $environment);
                 Configuration::updateValue('waiap_secret', $secret);
                 Configuration::updateValue('waiap_displayed_name', $displayed_name);
+                Configuration::updateValue('waiap_review_page_title', $review_page_title);
                 $output .= $this->displayConfirmation(
                     $this->l('Settings updated')
                 );
@@ -87,10 +137,11 @@ class Waiap extends PaymentModule{
         }
 
         $this->context->smarty->assign([
-            'waiap_pwall_bundle' => Configuration::get('waiap_environment') . self::JS_SDK_BUNDLE,
-            'waiap_pwall_css' => Configuration::get('waiap_environment') . self::CSS_PWALL,
-            'waiap_pwall_app' => Configuration::get('waiap_environment'). self::JS_APP,
+            'waiap_pwall_bundle' => $this->getEnviromentUrl() . self::JS_SDK_BUNDLE,
+            'waiap_pwall_css' => $this->getEnviromentUrl() . self::CSS_PWALL,
+            'waiap_pwall_app' => $this->getEnviromentUrl(). self::JS_APP,
             'waiap_pwall_controller' => Context::getContext()->link->getModuleLink('waiap', 'backend', [], Configuration::get('PS_SSL_ENABLED')),
+            'waiap_enviroment' => Configuration::get('waiap_environment'),
             'currency' => $this->context->currency
         ]);
 
@@ -118,11 +169,11 @@ class Waiap extends PaymentModule{
                     'options' => [
                         'query' => [
                             [
-                                'id_option' => 'https://sandbox.sipay.es',
+                                'id_option' => 'sandbox',
                                 'name' => 'Sandbox'
                             ],
                             [
-                                'id_option' => 'https://live.waiap.com',
+                                'id_option' => 'live',
                                 'name' => 'Live'
                             ]
                         ],
@@ -152,6 +203,12 @@ class Waiap extends PaymentModule{
                     'type' => 'text',
                     'label' => $this->l('Displayed name'),
                     'name' => 'waiap_displayed_name',
+                    'required' => true
+                ],
+                [
+                    'type' => 'text',
+                    'label' => $this->l('Review page title'),
+                    'name' => 'waiap_review_page_title',
                     'required' => true
                 ]
             ],
@@ -196,6 +253,7 @@ class Waiap extends PaymentModule{
         $helper->fields_value['waiap_secret'] = Configuration::get('waiap_secret');
         $helper->fields_value['waiap_environment'] = Configuration::get('waiap_environment');
         $helper->fields_value['waiap_displayed_name'] = Configuration::get('waiap_displayed_name');
+        $helper->fields_value['waiap_review_page_title'] = Configuration::get('waiap_review_page_title');
 
         return $helper->generateForm($fieldsForm);
     }
@@ -251,6 +309,28 @@ class Waiap extends PaymentModule{
         return $this->display(__FILE__, 'paymentwall_app.tpl');
     }
 
+    public function hookDisplayBackOfficeHeader($params)
+    {
+        if (_PS_VERSION_ >= 1.7) {
+            $this->context->controller->addCSS(strval($this->_path . 'views/css/express-checkout-admin.css'), 'all');
+        }else{
+            $this->context->controller->addCSS(strval($this->_path . 'views/css/express-checkout-admin.css'), 'all');
+        }
+    }
+
+    public function hookDisplayAdminOrderContentOrder($data){
+        //get extra data from our table
+        $order_id = $data["order"]->id;
+        $sql = 'SELECT * FROM '._DB_PREFIX_.'waiap_order_extradata WHERE id_order = '. $order_id;
+        $orderData = Db::getInstance()->getRow($sql);
+        if($orderData){
+            //asign info to smarty
+            $extraData = json_decode($orderData["data"], true);
+            $this->context->smarty->assign('waiap_order_extradata', $extraData);
+            return $this->display(__FILE__, 'paymentwall_order.tpl');
+        }
+    }
+
     public function hookDisplayHeader($params)
     {
         $route = $this->context->controller->php_self;
@@ -259,22 +339,25 @@ class Waiap extends PaymentModule{
         }
         if(in_array($route, self::ROUTES_LOAD_WAIAP_BUNDLE)){
             if (_PS_VERSION_ >= 1.7) {
-                $this->context->controller->registerJavascript('modules-waiap-sdk', strval(Configuration::get('waiap_environment')) . self::JS_SDK_BUNDLE, ['server' => 'remote']);
-                $this->context->controller->registerStylesheet('modules-waiap-css', strval(Configuration::get('waiap_environment')) . self::CSS_PWALL, ['server' => 'remote', 'media' => 'all']);
+                $this->context->controller->registerJavascript('modules-waiap-sdk', strval($this->getEnviromentUrl()) . self::JS_SDK_BUNDLE, ['server' => 'remote']);
+                $this->context->controller->registerJavascript('modules-waiap-sipaysdk', self::SIPAY_JS_SDK, ['server' => 'remote']);
+                $this->context->controller->registerStylesheet('modules-waiap-css', strval($this->getEnviromentUrl()) . self::CSS_PWALL, ['server' => 'remote', 'media' => 'all']);
                 $this->context->controller->registerJavascript('modules-waiap-appjs', 'modules/' . $this->name . '/views/js/waiap_checkout_paymentwall.js', ['position' => 'bottom', 'priority' => 200]);
             } else {
-                $this->context->controller->addCSS(strval(Configuration::get('waiap_environment')) . self::CSS_PWALL, 'all');
-                $this->context->controller->addJS(strval(Configuration::get('waiap_environment')) . self::JS_SDK_BUNDLE);
+                $this->context->controller->addCSS(strval($this->getEnviromentUrl()) . self::CSS_PWALL, 'all');
+                $this->context->controller->addJS(strval($this->getEnviromentUrl()) . self::JS_SDK_BUNDLE);
+                $this->context->controller->addJS(self::SIPAY_JS_SDK);
                 $this->context->controller->addJS($this->_path . 'views/js/waiap_checkout_paymentwall.js');
             }
             $customer = new Customer((int) (Context::getContext()->customer->id));
             Media::addJsDef([
                 'waiap_customerId'              => $customer->is_guest ? "0" : $customer->id,
                 'waiap_currency'                => $this->context->currency->iso_code,
-                'waiap_app_js'                  => strval(Configuration::get('waiap_environment')) . self::JS_APP,
+                'waiap_app_js'                  => strval($this->getEnviromentUrl()) . self::JS_APP,
                 'waiap_backend_url'             => Context::getContext()->link->getModuleLink($this->name, 'backend', [], Configuration::get('PS_SSL_ENABLED')),
                 'waiap_quote_rest'              => Context::getContext()->link->getModuleLink($this->name, 'quote', [], Configuration::get('PS_SSL_ENABLED')),
                 'waiap_payment_error'           => $this->l('There was an error processing your payment, please try again.'),
+                'waiap_enviroment'              => Configuration::get('waiap_environment'),
                 'ps_version'                    => _PS_VERSION_,
                 'osc_checkout'                  => _PS_VERSION_ >= 1.7 ? 1 : Configuration::get('PS_ORDER_PROCESS_TYPE'),
                 'PS_17_PAYMENT_STEP_HASH'       => 'checkout-payment-step',
@@ -283,6 +366,13 @@ class Waiap extends PaymentModule{
                 'PS_16_OSC_PAYMENT_STEP_HASH'   => 'app'
             ]);
         }
+    }
+
+    private function getEnviromentUrl(){
+        if(Configuration::get('waiap_environment') == 'sandbox'){
+            return 'https://sandbox.sipay.es';
+        }
+        return 'https://live.waiap.com';
     }
 
     public function hookPaymentReturn($params)

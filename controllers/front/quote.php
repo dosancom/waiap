@@ -15,6 +15,6 @@ class WaiapQuoteModuleFrontController extends ModuleFrontController
     public function postProcess()
     {
         //$jsonResponse["amount"]  = Context::getContext()->cart->getOrderTotal(true) * 100;
-        exit(Tools::jsonEncode(Context::getContext()->cart->getOrderTotal(true) * 100));
+        exit(Tools::jsonEncode(Context::getContext()->cart->getOrderTotal(true)));
     }
 }
