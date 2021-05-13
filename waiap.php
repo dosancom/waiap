@@ -9,7 +9,7 @@ class Waiap extends PaymentModule
     const JS_SDK_BUNDLE             = "/pwall_sdk/pwall_sdk.bundle.js";
     const CSS_PWALL                 = "/pwall_app/css/app.css";
     const JS_APP                    = "/pwall_app/js/app.js";
-    const ROUTES_LOAD_WAIAP_BUNDLE  = ["order", "order-opc"];
+    const ROUTES_LOAD_WAIAP_BUNDLE  = ["order", "order-opc", "supercheckoutcustom"];
     const SIPAY_JS_SDK              = "https://cdn.jsdelivr.net/gh/waiap/javascript-sdk@2.0.2/build/pwall-sdk.min.js";
 
     public function __construct()
@@ -1218,6 +1218,9 @@ class Waiap extends PaymentModule
     public function hookDisplayHeader($params)
     {
         $route = $this->context->controller->php_self;
+        if(!isset($route) && $this->context->controller instanceof ModuleFrontController) {
+            $route = $this->context->controller->module->name;
+        }
         if (in_array($route, self::ROUTES_LOAD_WAIAP_BUNDLE)) {
             if (_PS_VERSION_ >= 1.7) {
                 $this->context->controller->registerJavascript('modules-waiap-sdk', strval($this->getEnviromentUrl()) . self::JS_SDK_BUNDLE, ['server' => 'remote']);
