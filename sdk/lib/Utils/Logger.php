@@ -11,7 +11,11 @@ class Logger{
   public function __construct(
     $logFilePath
   ){
-    $this->log_file = fopen($logFilePath, 'a');
+    if($logFilePath!== false){
+      $this->log_file = fopen($logFilePath, 'a');
+    }else{
+      $this->log_file = false;
+    }
   }
   
   /**

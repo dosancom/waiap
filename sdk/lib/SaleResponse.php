@@ -49,10 +49,10 @@ class SaleResponse extends \PWall\Response
   public function getPaidAmount(){
     if($this->canPlaceOrder()
     && is_array($this->response)
-    && array_key_exists("params", $this->response)
-    && array_key_exists("payload", $this->response["params"])
-    && array_key_exists("amount", $this->response["params"]["payload"])){
-      return floatval($this->response["params"]["payload"]["amount"]/100);
+    && array_key_exists("result", $this->response)
+    && array_key_exists("payload", $this->response["result"])
+    && array_key_exists("amount", $this->response["result"]["payload"])){
+      return floatval($this->response["result"]["payload"]["amount"]/100);
     }
     return null;
   }

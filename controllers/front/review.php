@@ -9,7 +9,7 @@ class WaiapReviewModuleFrontController extends ModuleFrontController
   const JS_SDK_BUNDLE             = "/pwall_sdk/pwall_sdk.bundle.js";
   const CSS_PWALL                 = "/pwall_app/css/app.css";
   const JS_APP                    = "/pwall_app/js/app.js";
-  const SIPAY_JS_SDK              = "https://cdn.jsdelivr.net/gh/waiap/javascript-sdk@2.0.0/dist/2.0.0/pwall-sdk.min.js";
+  const SIPAY_JS_SDK              = "https://cdn.jsdelivr.net/gh/waiap/javascript-sdk@2.0.2/build/pwall-sdk.min.js";
 
   protected $waiap_checkout_helper = null;
   protected $name = "paymentwall_review";
@@ -66,7 +66,7 @@ class WaiapReviewModuleFrontController extends ModuleFrontController
 
   private function getEnviromentUrl(){
         if(Configuration::get('waiap_environment') == 'sandbox'){
-            return 'https://sandbox.sipay.es';
+            return 'https://sandbox.waiap.com';
         }
         return 'https://live.waiap.com';
     }

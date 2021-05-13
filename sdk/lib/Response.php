@@ -62,6 +62,22 @@ class Response
 
     return null;
   }
+  /**
+   * Return address if the response has address based on key (for express checkout)
+   * $key: address | billing_address
+   * 
+   * @return array|null array with address if response has address, otherwise null
+   */
+
+  public function getAddressFromResponse($key){
+    if(is_array($this->response)
+    && array_key_exists("result", $this->response)
+    && array_key_exists("payload", $this->response["result"]) 
+    && array_key_exists("address", $this->response["result"]["payload"])){
+      return $this->response["result"]["payload"][$key];
+    }
+    return null;
+  }
 
   /**
    * Return address if the response has address (for express checkout)
@@ -69,30 +85,17 @@ class Response
    * @return array|null array with address if response has address, otherwise null
    */
   public function getAddress(){
-    if(is_array($this->response)
-    && array_key_exists("result", $this->response)
-    && array_key_exists("payload", $this->response["result"])
-    && array_key_exists("address", $this->response["result"]["payload"])){
-      return $this->response["result"]["payload"]["address"];
-    }
-    if (
-      is_array($this->response)
-      && array_key_exists("result", $this->response)
-      && array_key_exists("payload", $this->response["result"])
-      && array_key_exists("shipping_address", $this->response["result"]["payload"])
-    ) {
-      return $this->response["result"]["payload"]["shipping_address"];
-    }
-    if (
-      is_array($this->response)
-      && array_key_exists("result", $this->response)
-      && array_key_exists("payload", $this->response["result"])
-      && array_key_exists("result", $this->response["result"]["payload"])
-      && array_key_exists("address", $this->response["result"]["payload"]["result"])
-    ) {
-      return $this->response["result"]["payload"]["result"]["address"];
-    }
-    return null;
+    return $this->getAddressFromResponse("address");
+  }
+
+
+   /**
+   * Return billing address if the response has address (for express checkout)
+   *
+   * @return array|null array with billing address if response has address, otherwise null
+   */
+  public function getBillingAddress(){
+    return $this->getAddressFromResponse("billing_address");
   }
 
   /**
@@ -108,15 +111,6 @@ class Response
       && array_key_exists("customer", $this->response["result"]["payload"])
     ) {
       return $this->response["result"]["payload"]["customer"];
-    }
-    if (
-      is_array($this->response)
-      && array_key_exists("result", $this->response)
-      && array_key_exists("payload", $this->response["result"])
-      && array_key_exists("result", $this->response["result"]["payload"])
-      && array_key_exists("customer", $this->response["result"]["payload"]["result"])
-    ) {
-      return $this->response["result"]["payload"]["result"]["customer"];
     }
     return null;
   }
@@ -142,7 +136,7 @@ class Response
    */
   public function isCreatePendingOrder(){
     if(is_array($this->response)
-    && array_key_exists("result", $this->response)
+    && array_key_exists("result", $this->response) && $this->response["result"] != null && array_key_exists("payload", $this->response["result"])
     && array_key_exists("payload", $this->response["result"])
     && array_key_exists("create_order", $this->response["result"]["payload"])
     && array_key_exists("express", $this->response["result"]["payload"])
@@ -161,25 +155,23 @@ class Response
   public function hasAddress(){
     if(is_array($this->response)
     && array_key_exists("result", $this->response)
-    && array_key_exists("payload", $this->response["result"])
+    && $this->response["result"] != null && array_key_exists("payload", $this->response["result"])
     && array_key_exists("address", $this->response["result"]["payload"])){
       return true;
     }
-    if (
-      is_array($this->response)
-      && array_key_exists("result", $this->response)
-      && array_key_exists("payload", $this->response["result"])
-      && array_key_exists("shipping_address", $this->response["result"]["payload"])
-    ) {
-      return true;
-    }
-    if (
-      is_array($this->response)
-      && array_key_exists("result", $this->response)
-      && array_key_exists("payload", $this->response["result"])
-      && array_key_exists("result", $this->response["result"]["payload"])
-      && array_key_exists("address", $this->response["result"]["payload"]["result"])
-    ) {
+    return false;
+  }
+
+  /**
+   * Check if the response has billing address (for express checkout)
+   *
+   * @return boolean true if response has address, otherwise false
+   */
+  public function hasBillingAddress(){
+    if(is_array($this->response)
+    && array_key_exists("result", $this->response)
+    && $this->response["result"] != null && array_key_exists("payload", $this->response["result"])
+    && array_key_exists("billing_address", $this->response["result"]["payload"])){
       return true;
     }
     return false;
@@ -195,15 +187,6 @@ class Response
     && array_key_exists("result", $this->response)
     && array_key_exists("payload", $this->response["result"])
     && array_key_exists("customer", $this->response["result"]["payload"])){
-      return true;
-    }
-    if (
-      is_array($this->response)
-      && array_key_exists("result", $this->response)
-      && array_key_exists("payload", $this->response["result"])
-      && array_key_exists("result", $this->response["result"]["payload"])
-      && array_key_exists("customer", $this->response["result"]["payload"]["result"])
-    ) {
       return true;
     }
     return false;
@@ -245,6 +228,23 @@ class Response
     //Response will be removed and only return this.
     $this->response = [];
     $this->response["error"] = $message;
+  }
+
+  /**
+   * Check for update amount in response, to ignore address if any
+   * @param  string $message Error message to return
+   * @return void
+   */
+  public function hasUpdateAmount(){
+    if (
+      is_array($this->response)
+      && array_key_exists("result", $this->response)
+      && array_key_exists("payload", $this->response["result"])
+      && array_key_exists("update_amount", $this->response["result"]["payload"])
+    ) {
+      return true;
+    }
+    return false;
   }
 
   /**

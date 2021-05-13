@@ -35,16 +35,47 @@ class WaiapBackendModuleFrontController extends ModuleFrontController
         $this->client->setResource(Configuration::get('waiap_resource'));
         $this->client->setSecret(Configuration::get('waiap_secret'));
         $this->client->setBackendUrl(Context::getContext()->link->getModuleLink('waiap', 'review', [], Configuration::get('PS_SSL_ENABLED')));
-        //$this->client->setDebugFile(__DIR__."/debug.log");
+        $debug_path = Configuration::get('waiap_debug_path');
+        if ($debug_path && $debug_path != '') {
+            $this->client->setDebugFile($debug_path);
+        }
         $quote = $this->getQuoteFromCheckoutorSession();
-        if($this->getQuoteFromCheckoutorSession() == null){
+        if($quote == null){
             $request = new \PWall\Request(json_encode($jsonRequest), true);
         }else{
             $request = new \PWall\Request(json_encode($jsonRequest), false);
         }
         $this->addOrderInfo($request, $quote);
 
+        if ($request->isEcCreateOrder()||$request->hasUpdateAmount()) {
+            //add product info
+            //       is_digital: true <- only if all element are digital
+            $cart_info = $this->checkout_helper->getPaypalItemsInfo($quote);
+            $request->setEcCartInfo($cart_info["items"], $cart_info["is_digital"], $cart_info["breakdown"]);
+            $request->setAmount($cart_info["total"]);
+            // $cart_info = $this->checkout_helper->getPaypalItemsInfo($quote);
+            // $request->setPaypalEcCartInfo($cart_info["items"], $cart_info["is_digital"]);
+            // $request->setAmount(floatval($quote->getOrderTotal(false, Cart::ONLY_PRODUCTS)));
+        }
+
+        $this->checkout_helper->setPSD2Params($request, Context::getContext()->customer, $quote);
+
         $response = $this->client->proxy($request);
+
+        if ($response->hasAddress() && !$response->hasUpdateAmount()) {
+            //Set address to quote, set shipping method, collect rates
+            try {
+                $quote = Context::getContext()->cart;
+                $error = $this->checkout_helper->setAddressAndCollectRates($response, $quote);
+                if ($error) {
+                    $response->setError(json_encode($error[0]));
+                } else {
+                    $response->setUpdatedAmount(floatval(Context::getContext()->cart->getOrderTotal(true)));
+                }
+            } catch (\Exception $e) {
+                $response->setError($e->getMessage());
+            }
+        }
 
         if ($response->isCreatePendingOrder() && !Context::getContext()->cookie->__get('waiap_pending_payment')) {
             if($this->checkout_helper->placeOrderFromResponse($jsonRequest, $response)){
@@ -57,10 +88,15 @@ class WaiapBackendModuleFrontController extends ModuleFrontController
                 $order_id = null;
                 if (Context::getContext()->cookie->__get('waiap_pending_payment')) {
                     $order_id = Context::getContext()->cookie->__get('waiap_order_id');
-                    
+                    $cart = new Cart(Context::getContext()->cookie->__get('waiap_quote_id'));
+                    $order_total = $cart->getOrderTotal(true, Cart::BOTH);
+
                     $history = new OrderHistory();
                     $history->id_order = (int) $order_id;
-                    $new_order_status_id = (int) Configuration::get('PS_OS_PAYMENT');
+                    
+                    $new_order_status_id = $this->checkout_helper->detectSuspectedFraud($response, $order_total) ?
+                        (int) Configuration::get('WAIAP_SUSPECTED_FRAUD')
+                        : (int) Configuration::get('PS_OS_PAYMENT');
                     $history->changeIdOrderState($new_order_status_id, (int)$order_id);
                     $history->save();
                     $customer = Context::getContext()->customer;
@@ -83,20 +119,20 @@ class WaiapBackendModuleFrontController extends ModuleFrontController
         }
         
 
-        exit($response->toJSON());
+        $this->ajaxDie($response->toJSON());
     }
 
     private function getQuoteFromCheckoutorSession()
-  {
-    if (Context::getContext()->cart->id) {
-      Context::getContext()->cookie->__unset('waiap_pending_payment');
-      Context::getContext()->cookie->__unset('waiap_order_id');
-      Context::getContext()->cookie->__unset('waiap_quote_id');
-      return Context::getContext()->cart;
+    {
+        if (Context::getContext()->cart->id) {
+            Context::getContext()->cookie->__unset('waiap_pending_payment');
+            Context::getContext()->cookie->__unset('waiap_order_id');
+            Context::getContext()->cookie->__unset('waiap_quote_id');
+            return Context::getContext()->cart;
+        }
+        if (Context::getContext()->cookie->__get('waiap_pending_payment') && Context::getContext()->cookie->__get('waiap_quote_id')) {
+            return new Cart(Context::getContext()->cookie->__get('waiap_quote_id'));
+        }
+        return Context::getContext()->cart;
     }
-    if (Context::getContext()->cookie->__get('waiap_pending_payment') && Context::getContext()->cookie->__get('waiap_quote_id')) {
-      return new Cart(Context::getContext()->cookie->__get('waiap_quote_id'));
-    }
-    return Context::getContext()->cart;
-  }
 }
