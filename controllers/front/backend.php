@@ -98,6 +98,7 @@ class WaiapBackendModuleFrontController extends ModuleFrontController
                         (int) Configuration::get('WAIAP_SUSPECTED_FRAUD')
                         : (int) Configuration::get('PS_OS_PAYMENT');
                     $history->changeIdOrderState($new_order_status_id, (int)$order_id);
+                    $history->addWithemail();
                     $history->save();
                     $customer = Context::getContext()->customer;
                     setcookie("success_redirect", Context::getContext()->link->getPageLink('order-confirmation&id_cart=' . (int) Context::getContext()->cookie->__get('waiap_quote_id') . '&id_module=' . (int) $this->module->id . '&id_order=' . $order_id . '&key=' . $customer->secure_key), time() + 10, "/");
